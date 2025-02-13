@@ -1,0 +1,105 @@
+class MyLineReg:
+    def __init__(self, n_iter=100, learning_rate=0.1, metric=None, reg=None, l1_coef=0, l2_coef=0, sgd_sample=None, random_state=42):
+        self.n_iter = n_iter
+        self.learning_rate = learning_rate
+        self.weights = None
+        self.metric = metric
+        self.best_score = None
+        self.reg = reg
+        self.l1_coef = l1_coef
+        self.l2_coef = l2_coef
+        self.sgd_sample=sgd_sample
+        self.random_state=random_state
+
+    def fit(self, X: pd.DataFrame, y: pd.Series, verbose=False):
+        n, n_feature = pd.DataFrame(X).shape
+        X.insert(0, 'w', np.ones(n))
+        self.weights = np.ones(n_feature + 1)
+        random.seed(self.random_state)
+        for i in range(1, self.n_iter+1):
+            if self.sgd_sample:
+                if type(self.sgd_sample)==float:
+                    sample_rows_idx = random.sample(range(X.shape[0]), round(X.shape[0]*self.sgd_sample))
+                else:
+                    sample_rows_idx = random.sample(range(X.shape[0]), self.sgd_sample)
+                
+                X_=X.iloc[sample_rows_idx]
+                y_=y.iloc[sample_rows_idx]
+                n_=X_.shape[0]
+            else:
+                X_=X
+                y_=y
+                n_=n
+            if not isinstance(self.learning_rate, (int, float)):
+                learning_rate=self.learning_rate(i)
+            else:
+                learning_rate=self.learning_rate
+            y_pred = np.dot(X_, self.weights)
+            if self.reg:
+                if self.reg == 'l1':
+                    loss = np.mean(y_pred - y_) ** 2 + self.l1_coef * (np.sum(np.abs(self.weights)))
+                    grad = ((2 / n_) * (y_pred - y_) @ X_) + (self.l1_coef * (np.sign(self.weights)))
+                    self.weights -= grad * learning_rate
+                    if verbose and (i + 1) % verbose == 0:
+                        if i == 0:
+                            print(f'start|loss:{loss:.2f}')
+                        print(f'{i + 1}|loss:{loss:.2f}')
+
+                elif self.reg == 'l2':
+
+                    loss = np.mean(y_pred - y_) ** 2 + self.l2_coef * (np.sum((self.weights) ** 2))
+                    grad = (2 * (y_pred - y_) @ X_ ) / n_ + self.l2_coef * 2 * (self.weights)
+                    self.weights -= grad * learning_rate
+                    if verbose and (i + 1) % verbose == 0:
+                        if i == 0:
+                            print(f'start|loss:{loss:.2f}')
+                        print(f'{i + 1}|loss:{loss:.2f}')
+
+                elif self.reg == 'elasticnet':
+
+                    loss = np.mean(y_pred - y_) ** 2 + self.l1_coef * (np.sum(np.abs(self.weights))) + self.l2_coef * (
+                        np.sum((self.weights) ** 2))
+                    grad = (2 * (y_pred - y_) @ X_) / n_ + self.l1_coef * np.sign(self.weights) + self.l2_coef * 2 * (
+                        self.weights)
+                    self.weights -= grad * learning_rate
+                    if verbose and (i + 1) % verbose == 0:
+                        if i == 0:
+                            print(f'start|loss:{loss:.2f}')
+                        print(f'{i + 1}|loss:{loss:.2f}')
+            else:
+                y_pred = np.dot(X_, self.weights)
+                loss = np.mean(y_pred - y_) ** 2
+                grad = (2 * (y_pred - y_) @ X_) / n_
+                self.weights -= grad * learning_rate
+                if self.metric:
+                    self.best_score = self.get_metrics(X_, y_, self.metric, self.weights)
+
+                if verbose and (i + 1) % verbose == 0:
+                    if i == 0:
+                        if self.metric:
+                            print(f'start|loss:{loss:.2f}| {self.metric}: {self.best_score}')
+                        print(f'start|loss:{loss:.2f}')
+                    print(f'{i + 1}|loss:{loss:.2f}| {self.metric}: {self.best_score}')
+    @staticmethod
+    def get_metrics(X_, y_, metric, weights):
+        metrics = {}
+        metrics['mae'] = np.mean(np.abs(y_ - X_ @ weights))
+        metrics['rmse'] = np.sqrt(np.mean((y_ - X_ @ weights) ** 2))
+        metrics['mse'] = np.mean((y_ - X_ @ weights) ** 2)
+        metrics['r2'] = 1 - ((np.sum((y_ - X_ @ weights) ** 2)) / (np.sum((y_ - np.mean(y_)) ** 2)))
+        metrics['mape'] = 100 * np.mean(np.abs(((y_ - X_ @ weights) / y_)))
+        return metrics[metric]
+
+    def predict(self, X):
+        X.insert(0, 'w', np.ones(X.shape[0]))
+        pred = X @ self.weights
+        return pred
+
+    def get_coef(self):
+        return self.weights[1:]
+
+    def get_best_score(self):
+        return self.best_score
+
+    def __str__(self):
+        return f'MyLineReg class: n_iter={self.n_iter}, learning_rate={self.learning_rate}'
